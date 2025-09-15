@@ -1,5 +1,5 @@
 - v4l-ctl is a tool that allows the interaction with the camera stack like a black box
-1. Install it
+1. Install it (if not already)
     
     ```jsx
     sudo apt install v4l-utils
