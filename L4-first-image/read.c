@@ -5,6 +5,7 @@
 #include <sys/ioctl.h>
 #include <linux/videodev2.h>
 
+// Does not work on mine, PC does not support read()
 int main() {
 
     // open the device
