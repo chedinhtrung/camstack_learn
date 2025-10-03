@@ -1,4 +1,4 @@
-- Previoously: open device, query capabilities and pixel formats, setting a desired pixel format
+- Previously: open device, query capabilities and pixel formats, setting a desired pixel format
 
 - This lesson: capture a full image from the device. 
 
@@ -15,9 +15,29 @@
     - `DQBUF`: get data from a filled buffer
     - `STREAMOFF`: Stop the conveyer belt
 
+- Workflow:
+    1. **Configure the camera**. Use `ioctl` along with the respective ID of the requests to set parameters - most important is the *pixel format*.
+
+    2. **Request buffers**. This is essentially telling the camera: When you capture frames, please put them into, say, 5 slots in the memory region. Caveat: the camera stack might decide to give us less than that! Where are those memory regions? How big are they? We'll only find out after we *query* the buffer. 
+
+    3. For each buffer we have to **memory map** it into user space. Essentially, the memory region that we just got allocated in the previous step lives in *kernel* space - that we cannot directly read out. The `mmap()` operation can map that memory region into *user space* and returns a pointer that we can use to access the underlying kernel space memory. 
+    To save the info of all the buffers, we create a struct called `buffer` (see code), call `mmap`for each, and store the info to an array of `buffer` structs. 
+
+    4. **Queue all of the buffers**. At the beginning, we have to tell the camera stack: all these buffers are empty and ready to receive frame data into. THis is done by an `ioctl`call.
+
+    4. **Tell the camera to start capturing frames**. This is done by sending an `ioctl` with the macro `VIDIOC_STREAMON`. At this point, the camera keeps recording frames and put them into the buffers that has been allocated in step 2. 
+
+    5. In a loop, we **dequeue and requeue buffers continuously** - again, with an `ioctl` with the macro `VIDIOC_DQBUF`. This is asking the camera: are there any buffers that are filled with data? If there is, the camera returns the buffer. If not, the call blocks until a buffer is available. 
+
+    In this context, the only thing we are interested in is the buffer's index, because in step 3 we saved the infos like the pointer to access the buffer and the size of the buffer in our array already. We use the pointer to read out the data and do whatever we want with it (send it, compress it, write to files, etc.). 
+    
+    Then we have to **queue the buffer back*. This means telling the camera stack: I am done with this memory region. You can fill it with new data now.
+
+    6. After we are done, we have to tell the camera to stop capturing.
+
 #### Code explanation (stream.c)
 
-- What is `xioctl()`? This is a pattern in Linux called "retry on EINTR" (retry when error interrupted). Essentially, some events could interrupt our ioctl out of the blue by the system, and `ioctl` will "crash" and set `errno = EINTR` (to be explored later). We want in that case to retry the `ioctl` call. 
+- What is `xioctl()`? This is a pattern in Linux called "retry on EINTR" (retry when error interrupted). Essentially, some events could interrupt our ioctl out of the blue by the system, and `ioctl` will "crash" and set `errno = EINTR` (to be explored later). We want in that case to retry the `ioctl` call - because this does not mean there is something wrong with the `ioctl` call - just that some other event interrupted it. 
 
 - To tell the driver "hey give me N buffers", we fill a struct `v4l2_requestbuffers`, then send it like a request using `xioctl`. 
 
